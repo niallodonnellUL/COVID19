@@ -1,0 +1,719 @@
+# -*- coding: utf-8 -*-
+"""
+Created on Sun Apr 25 18:10:21 2021
+
+@author: niall
+"""
+
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import os
+import datetime
+import time
+import yfinance as yf
+from fredapi import Fred
+import investpy
+import quandl
+from datetime import date
+from functools import reduce
+import workdays as wd
+today = date.today()
+today = today.strftime("%d/%m/%Y")
+
+#pip install --upgrade yfinance
+#-----------------------------------------------------------------------------------------
+
+
+# Working Days Function
+
+def busdays(df, holidays=None):
+        if holidays is None:
+            holidays = []
+        start_date = df.Date.to_list()[0].date()
+        end_date = df.Date.to_list()[-1].date()
+
+
+        start_wd = wd.workday(wd.workday(start_date, -1, holidays), 1, holidays)
+        end_wd = wd.workday(wd.workday(end_date, 1, holidays), -1, holidays)
+
+        b_days = [start_wd]
+        while b_days[-1] < end_wd:
+            b_days.append(wd.workday(b_days[-1], 1, holidays))
+
+        valid = [i in b_days for i in df.Date]
+        return df[valid]
+    
+#-----------------------------------------------------------------------------------------   
+
+# Set Directory for any manual downloads of files linked here that need to be done: 
+
+os.chdir('c:\\Users\\abc\Downloads')
+
+# FRED API Key
+
+fred = Fred(api_key='53c2d67c903248b8df4b16115d103e1f')
+
+#-----------------------------------------------------------------------------------------
+
+# COVID Data
+
+OWID_url= 'https://covid.ourworldindata.org/data/owid-covid-data.csv'
+OWID = pd.read_csv(OWID_url)
+
+# Countries for Analysis
+
+countries = ['China', 'Italy', 'Spain', 'United Kingdom',
+             'United States', 'Mexico', 'Brazil', 'India', 'World']
+
+
+data = OWID.loc[OWID['location'].isin(countries)]
+
+
+data['date'] = pd.to_datetime(data['date'], format = '%Y-%m-%d')
+data = data.set_index('date')
+data = data[(data.index > '2020-05-31')]
+#data = data[['location', 'total_cases', 'new_cases', 'new_cases_smoothed', 'total_deaths', 'new_deaths', 'new_deaths_smoothed', 'icu_patients', 'hosp_patients', 'total_vaccinations', 'people_vaccinated', 'new_vaccinations', 'new_vaccinations_smoothed']].copy()
+data = data[['location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']]
+
+
+china = data.loc[data['location'] == 'China']
+china.reset_index(level=0, inplace=True)
+china.rename(columns={'date':'Date'}, inplace=True)
+china = busdays(china)
+chinai = china['new_vaccinations_smoothed'].first_valid_index()
+china = china[china.index > chinai]
+china.fillna(method='bfill', inplace=True)
+
+
+italy = data.loc[data['location'] == 'Italy']
+italy.reset_index(level=0, inplace=True)
+italy.rename(columns={'date':'Date'}, inplace=True)
+italy = busdays(italy)
+italyi = italy['total_vaccinations'].first_valid_index()
+italy = italy[italy.index > italyi]
+italy.fillna(method='bfill', inplace=True)
+
+
+spain = data.loc[data['location'] == 'Spain']
+spain.reset_index(level=0, inplace=True)
+spain.rename(columns={'date':'Date'}, inplace=True)
+spain = busdays(spain)
+spaini = spain['total_vaccinations'].first_valid_index()
+spain = spain[spain.index > spaini]
+spain.fillna(method='bfill', inplace=True)
+
+
+uk = data.loc[data['location'] == 'United Kingdom']
+uk.reset_index(level=0, inplace=True)
+uk.rename(columns={'date':'Date'}, inplace=True)
+uk = busdays(uk)
+uki = uk['total_vaccinations'].first_valid_index()
+uk = uk[uk.index > uki]
+uk.fillna(method='bfill', inplace=True)
+
+
+us = data.loc[data['location'] == 'United States']
+us.reset_index(level=0, inplace=True)
+us.rename(columns={'date':'Date'}, inplace=True)
+us = busdays(us)
+usi = us['total_vaccinations'].first_valid_index()
+us = us[us.index > usi]
+us.fillna(method='bfill', inplace=True)
+
+
+figdata = OWID.loc[OWID['location'].isin(countries)]
+figdata['date'] = pd.to_datetime(figdata['date'], format = '%Y-%m-%d')
+figdata = figdata.set_index('date')
+#figdata = figdata[(figdata.index > '2020-05-31')]
+#data = data[['location', 'total_cases', 'new_cases', 'new_cases_smoothed', 'total_deaths', 'new_deaths', 'new_deaths_smoothed', 'icu_patients', 'hosp_patients', 'total_vaccinations', 'people_vaccinated', 'new_vaccinations', 'new_vaccinations_smoothed']].copy()
+figdata = figdata[['location', 'total_cases', 'new_cases_smoothed', 'total_deaths', 'new_deaths_smoothed', 'total_vaccinations', 'new_vaccinations_smoothed']]
+
+chinafigure = figdata.loc[figdata['location'] == 'China']
+italyfigure = figdata.loc[figdata['location'] == 'Italy']
+spainfigure = figdata.loc[figdata['location'] == 'Spain']
+ukfigure = figdata.loc[figdata['location'] == 'United Kingdom']
+usfigure = figdata.loc[figdata['location'] == 'United States']
+wdfigure = figdata.loc[figdata['location'] == 'World']
+
+world = data.loc[data['location'] == 'World']
+world.reset_index(level=0, inplace=True)
+world.rename(columns={'date':'Date'}, inplace=True)
+world = busdays(world)
+worldi = world['total_vaccinations'].first_valid_index()
+world = world[world.index > usi]
+world.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Indices
+
+yftoday = date.today()
+yftoday = yftoday.strftime("%Y-%m-%d")
+
+#China
+sse = yf.download('000001.SS', start='2019-12-31', end=yftoday)
+sse.reset_index(level=0, inplace=True)
+sse = sse[['Date', 'Adj Close', 'Volume']].copy()
+sse.columns = ['Date', 'SSE', 'SSE_Volume']
+
+#Italy
+mib = yf.download('FTSEMIB.MI', start='2019-12-31', end=yftoday)
+mib.reset_index(level=0, inplace=True)
+mib = mib[['Date', 'Adj Close', 'Volume']].copy()
+mib.columns = ['Date', 'MIB', 'MIB_Volume']
+
+#Spain
+ibex = yf.download('^IBEX', start='2019-12-31', end=yftoday)
+ibex.reset_index(level=0, inplace=True)
+ibex = ibex[['Date', 'Adj Close', 'Volume']].copy()
+ibex.columns = ['Date', 'IBEX', 'IBEX_Volume']
+
+#UK
+ftse = yf.download('^FTSE', start='2019-12-31', end=yftoday)
+ftse.reset_index(level=0, inplace=True)
+ftse = ftse[['Date', 'Adj Close', 'Volume']].copy()
+ftse.columns = ['Date', 'FTSE', 'FTSE_Volume']
+
+#USA
+gspc = yf.download('^GSPC', start='2019-12-31', end=yftoday)
+gspc.reset_index(level=0, inplace=True)
+gspc = gspc[['Date', 'Adj Close', 'Volume']].copy()
+gspc.columns = ['Date', 'GSPC', 'GSPC_Volume']
+
+#World
+#wld = yf.download('MWL=F', start='2019-12-31', end=yftoday)
+wld = yf.download('EUNL.DE', start='2019-12-31', end=yftoday)
+wld.reset_index(level=0, inplace=True)
+wld = wld[['Date', 'Adj Close', 'Volume']].copy()
+wld.columns = ['Date', 'MWL', 'MWL_Volume']
+
+#-----------------------------------------------------------------------------------------
+
+# Financial Indicators  (From Yahoo, FRED, Investing.com)
+    
+#Gold 
+gold = yf.download('GC=F', start='2019-12-31', end=yftoday)
+gold.reset_index(level=0, inplace=True)
+gold = gold[['Date', 'Adj Close']].copy()
+gold.columns = ['Date', 'Gold']
+
+#Silver
+silver = yf.download('SI=F', start='2019-12-31', end=yftoday)
+silver.reset_index(level=0, inplace=True)
+silver = silver[['Date', 'Adj Close']].copy()
+silver.columns = ['Date', 'Silver']
+
+#Oil 
+oil = yf.download('CL=F', start='2019-12-31', end=yftoday)
+oil.reset_index(level=0, inplace=True)
+oil = oil[['Date', 'Adj Close']].copy()
+oil.columns = ['Date', 'Oil']
+
+#-----------------------------------------------------------------------------------------
+
+#Volatility - China 
+
+chinaVIX = fred.get_series('VXFXICLS')
+chinaVIX = chinaVIX.to_frame()
+chinaVIX.reset_index(level=0, inplace=True)
+chinaVIX.columns = ['Date', 'VXFXICLS'] 
+chinaVIX['Date'] = pd.to_datetime(chinaVIX['Date'], format = '%Y-%m-%d')
+chinaVIX.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Volatility- Eurozone /  UK 
+
+euroVIX = investpy.get_index_historical_data(index='STOXX 50 Volatility VSTOXX EUR',
+                                             country = 'euro zone',
+                                        from_date='01/01/2010',
+                                        to_date=today)
+
+euroVIX.reset_index(level=0, inplace=True)
+euroVIX = euroVIX[['Date','Close']].copy()
+euroVIX.columns = ['Date', 'VSTOXX']
+euroVIX['Date'] = pd.to_datetime(euroVIX['Date'], format = '%Y-%m-%d')
+
+#-----------------------------------------------------------------------------------------
+
+#Volatility - USA 
+
+usaVIX = fred.get_series('VIXCLS')
+usaVIX = usaVIX.to_frame()
+usaVIX.reset_index(level=0, inplace=True)
+usaVIX.columns = ['Date', 'VIX'] 
+usaVIX['Date'] = pd.to_datetime(usaVIX['Date'], format = '%Y-%m-%d')
+usaVIX.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Volatility - World 
+
+wldVIX = fred.get_series('VIXCLS')
+wldVIX = wldVIX.to_frame()
+wldVIX.reset_index(level=0, inplace=True)
+wldVIX.columns = ['Date', 'VIX'] 
+wldVIX['Date'] = pd.to_datetime(wldVIX['Date'], format = '%Y-%m-%d')
+wldVIX.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Interbank Offered Rates 
+
+#China - SHIBOR
+
+#Download 2020 & 2021 files from here: (http://www.shibor.org/shibor/web/DataService_e.jsp)
+
+# Below Data contains O/N Rate + Various Interbank Rates
+
+shibor1 = pd.read_excel('ShiborÊý¾Ý2020.xls') # 2020 Data 
+shibor2 = pd.read_excel('ShiborÊý¾Ý2021.xls') # 2021 Data
+shibor = pd.concat([shibor1, shibor2])
+shibor.rename(columns = { shibor.columns[0]: "Date"}, inplace = True)
+
+cn3M = shibor[['Date', '3M']]
+cn3M['Date'] = pd.to_datetime(cn3M['Date']).dt.normalize()
+
+cnBOR = shibor[['Date', '1M']]
+cnBOR['Date'] = pd.to_datetime(cnBOR['Date']).dt.normalize()
+
+#-----------------------------------------------------------------------------------------
+
+#EU - EURIBOR
+
+euBOR1 = 'https://www.emmi-benchmarks.eu/assets/components/rateisblue/file_processing/publication/processed/hist_EURIBOR_2020.csv'
+euBOR1 = pd.read_csv(euBOR1)
+euBOR1 = euBOR1.transpose()
+euBOR1 = euBOR1.drop(euBOR1.index[[0]])
+euBOR1.reset_index(level=0, inplace=True)
+euBOR1.columns = ['Date', '1W', '1M', '3M', '6M', '12M'] 
+
+euBOR2 = 'https://www.emmi-benchmarks.eu/assets/components/rateisblue/file_processing/publication/processed/hist_EURIBOR_2021.csv'
+euBOR2 = pd.read_csv(euBOR2)
+euBOR2 = euBOR2.transpose()
+euBOR2 = euBOR2.drop(euBOR2.index[[0]])
+euBOR2.reset_index(level=0, inplace=True)
+euBOR2.columns = ['Date', '1W', '1M', '3M', '6M', '12M'] 
+
+
+euBOR = pd.concat([euBOR1, euBOR2])
+
+eu3M = euBOR[['Date', '3M']].copy()
+eu3M['Date'] = pd.to_datetime(eu3M['Date'], format = '%d/%m/%Y')
+
+euBOR = euBOR[['Date', '1M']].copy()
+euBOR['Date'] = pd.to_datetime(euBOR['Date'], format = '%d/%m/%Y')
+
+#-----------------------------------------------------------------------------------------
+
+#UK - LIBOR GBP 
+
+#ukBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=off&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=GBP1MTD156N&scale=left&cosd=2016-05-12&coed=2021-05-12&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-19&revision_date=2021-05-19&nd=1986-01-02'
+ukBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=off&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=GBP1MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+ukBOR = pd.read_csv(ukBOR)
+ukBOR.columns = ['Date', 'liborGBP'] 
+ukBOR['Date'] = pd.to_datetime(ukBOR['Date'], format = '%Y-%m-%d')
+ukBOR['liborGBP'].replace(to_replace='.', method='bfill', inplace=True)
+#ukBOR = ukBOR[ukBOR['liborGBP'] != '.']
+
+#uk3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=off&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=GBP3MTD156N&scale=left&cosd=2016-05-17&coed=2021-05-17&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-24&revision_date=2021-05-24&nd=1986-01-02'
+uk3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=off&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=GBP3MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+uk3M = pd.read_csv(uk3M)
+uk3M.columns = ['Date', 'liborGBP3M'] 
+uk3M['Date'] = pd.to_datetime(uk3M['Date'], format = '%Y-%m-%d')
+uk3M['liborGBP3M'].replace(to_replace='.', method='bfill', inplace=True)
+#-----------------------------------------------------------------------------------------
+
+#USA - LIBOR USD 
+
+#usBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD1MTD156N&scale=left&cosd=2016-05-12&coed=2021-05-12&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-19&revision_date=2021-05-19&nd=1986-01-02'
+usBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD1MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+usBOR = pd.read_csv(usBOR)
+usBOR.columns = ['Date', 'liborUS'] 
+usBOR['Date'] = pd.to_datetime(usBOR['Date'], format = '%Y-%m-%d')
+usBOR['liborUS'].replace(to_replace='.', method='bfill', inplace=True)
+#usBOR = usBOR.assign(liborUS=usBOR.liborUS.mask(usBOR.liborUS.gt('.')).bfill())
+#usBOR = usBOR[usBOR['liborUS'] != '.']
+
+#us3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD3MTD156N&scale=left&cosd=2016-05-17&coed=2021-05-17&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-24&revision_date=2021-05-24&nd=1986-01-02' 
+us3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD3MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+us3M = pd.read_csv(us3M)
+us3M.columns = ['Date', 'liborUS3M'] 
+us3M['Date'] = pd.to_datetime(us3M['Date'], format = '%Y-%m-%d')
+us3M['liborUS3M'].replace(to_replace='.', method='bfill', inplace=True)
+#-----------------------------------------------------------------------------------------
+
+#World
+
+#wldBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD1MTD156N&scale=left&cosd=2016-05-12&coed=2021-05-12&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-19&revision_date=2021-05-19&nd=1986-01-02'
+wldBOR = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD1MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+wldBOR = pd.read_csv(wldBOR)
+wldBOR.columns = ['Date', 'libor'] 
+wldBOR['Date'] = pd.to_datetime(wldBOR['Date'], format = '%Y-%m-%d')
+wldBOR['libor'].replace(to_replace='.', method='bfill', inplace=True)
+#wldBOR = wldBOR[wldBOR['libor'] != '.']
+
+#wd3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD3MTD156N&scale=left&cosd=2016-05-17&coed=2021-05-17&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-05-24&revision_date=2021-05-24&nd=1986-01-02' 
+wd3M = 'https://fred.stlouisfed.org/graph/fredgraph.csv?bgcolor=%23e1e9f0&chart_type=line&drp=0&fo=open%20sans&graph_bgcolor=%23ffffff&height=450&mode=fred&recession_bars=on&txtcolor=%23444444&ts=12&tts=12&width=1168&nt=0&thu=0&trc=0&show_legend=yes&show_axis_titles=yes&show_tooltip=yes&id=USD3MTD156N&scale=left&cosd=2016-07-06&coed=2021-07-06&line_color=%234572a7&link_values=false&line_style=solid&mark_type=none&mw=3&lw=2&ost=-99999&oet=99999&mma=0&fml=a&fq=Daily&fam=avg&fgst=lin&fgsnd=2020-02-01&line_index=1&transformation=lin&vintage_date=2021-07-13&revision_date=2021-07-13&nd=1986-01-02'
+wd3M = pd.read_csv(wd3M)
+wd3M.columns = ['Date', 'libor3M'] 
+wd3M['Date'] = pd.to_datetime(wd3M['Date'], format = '%Y-%m-%d')
+wd3M['libor3M'].replace(to_replace='.', method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Overnight Indexed Swap Rates 
+
+#China - SHIBOR 
+
+#Download from here: (http://www.shibor.org/shibor/web/DataService_e.jsp)
+
+# Below Data contains O/N Rate + Various Interbank Rates
+
+shibor1 = pd.read_excel('ShiborÊý¾Ý2020.xls') # 2020 Data 
+shibor2 = pd.read_excel('ShiborÊý¾Ý2021.xls') # 2021 Data
+shibor = pd.concat([shibor1, shibor2])
+shibor.rename(columns = { shibor.columns[0]: "Date"}, inplace = True)
+cnOIS = shibor[['Date', 'O/N']]
+#cnOIS['Date'] = pd.to_datetime(cnOIS['Date'], format = '%Y-%m-%d')
+cnOIS['Date'] = pd.to_datetime(cnOIS['Date']).dt.normalize()
+
+#China L-OIS Sprad
+
+cnLOIS = cnBOR.merge(cnOIS, left_on = 'Date', right_on = 'Date', how='left')
+cnLOIS['1M'] = cnLOIS['1M'].astype(float)
+cnLOIS['O/N'] = cnLOIS['O/N'].astype(float)
+cnLOIS['cnLOIS'] = (cnLOIS['1M'] - cnLOIS['O/N'])
+cnLOIS = cnLOIS[['Date', 'cnLOIS']].copy()
+
+#-----------------------------------------------------------------------------------------
+
+#EU - EONIA 
+
+euOIS1 = 'https://www.emmi-benchmarks.eu/assets/components/rateisblue/file_processing/publication/processed/hist_EONIA_2020.csv' 
+euOIS1 = pd.read_csv(euOIS1)
+euOIS1 = euOIS1.transpose()
+euOIS1 = euOIS1.drop(euOIS1.index[[0]])
+euOIS1.columns = ['EONIA', 'VOLUME'] 
+euOIS1 = euOIS1.drop(columns=['VOLUME'])
+
+euOIS2 = 'https://www.emmi-benchmarks.eu/assets/components/rateisblue/file_processing/publication/processed/hist_EONIA_2021.csv' 
+euOIS2 = pd.read_csv(euOIS2)
+euOIS2 = euOIS2.transpose()
+euOIS2 = euOIS2.drop(euOIS2.index[[0]])
+euOIS2.columns = ['EONIA', 'VOLUME'] 
+euOIS2 = euOIS2.drop(columns=['VOLUME'])
+
+euOIS = pd.concat([euOIS1, euOIS2])
+
+euOIS.reset_index(level=0, inplace=True)
+euOIS.columns = ['Date', 'EONIA'] 
+euOIS['Date'] = pd.to_datetime(euOIS['Date'], format = '%d/%m/%Y')
+
+#EU L-OIS Spread
+
+euLOIS = euBOR.merge(euOIS, left_on = 'Date', right_on = 'Date', how='left')
+euLOIS['euLOIS'] = euLOIS['1M'] - euLOIS['EONIA']
+euLOIS = euLOIS[['Date', 'euLOIS']].copy()
+euLOIS = euLOIS.dropna()
+
+#-----------------------------------------------------------------------------------------
+
+#UK - SONIA 
+
+ukOIS = 'http://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp?Travel=NIxAZxI3xSCxSUx&FromSeries=1&ToSeries=50&DAT=RNG&FD=1&FM=Jan&FY=1963&TD=4&TM=May&TY=2021&VFD=Y&csv.x=4&csv.y=13&CSVF=TT&C=5JK&Filter=N' 
+ukOIS = 'http://www.bankofengland.co.uk/boeapps/iadb/fromshowcolumns.asp?Travel=NIxSCxSUx&FromSeries=1&ToSeries=50&DAT=RNG&FD=1&FM=Jan&FY=1963&TD=13&TM=Jul&TY=2021&VFD=Y&csv.x=27&csv.y=14&CSVF=TT&C=5JK&Filter=N'
+ukOIS = pd.read_csv(ukOIS)
+ukOIS = ukOIS.drop(ukOIS.index[[0,1]])
+ukOIS.columns = ['Date', 'SONIA']
+ukOIS['Date'] =  pd.to_datetime(ukOIS['Date'], format='%d %b %Y')
+ukOIS.fillna(method='bfill', inplace=True)
+
+#UK - L-OIS Spread
+
+ukLOIS = ukBOR.merge(ukOIS, left_on = 'Date', right_on = 'Date', how='left')
+ukLOIS['liborGBP'] = ukLOIS['liborGBP'].astype(float) 
+ukLOIS['SONIA'] = ukLOIS['SONIA'].astype(float) 
+ukLOIS['ukLOIS'] = (ukLOIS['liborGBP'] - ukLOIS['SONIA'])
+ukLOIS.fillna(method='bfill', inplace=True)
+ukLOIS = ukLOIS.dropna()
+ukLOIS = ukLOIS[['Date', 'ukLOIS']].copy()
+
+#-----------------------------------------------------------------------------------------
+
+#USA - EFFR 
+
+usOIS = fred.get_series('EFFR')
+usOIS = usOIS.to_frame()
+usOIS.reset_index(level=0, inplace=True)
+usOIS.columns = ['Date', 'EFFR'] 
+usOIS['Date'] = pd.to_datetime(usOIS['Date'], format = '%Y-%m-%d')
+usOIS.fillna(method='bfill', inplace=True)
+
+#US - L-OIS Spread
+
+usLOIS = usBOR.merge(usOIS, left_on = 'Date', right_on = 'Date', how='left')
+usLOIS['liborUS'] = usLOIS['liborUS'].astype(float) 
+usLOIS['EFFR'] = usLOIS['EFFR'].astype(float) 
+usLOIS['usLOIS'] = (usLOIS['liborUS'] - usLOIS['EFFR'])
+usLOIS.fillna(method='bfill', inplace=True)
+usLOIS = usLOIS[['Date', 'usLOIS']].copy()
+
+#-----------------------------------------------------------------------------------------
+
+#World 
+
+wldOIS = fred.get_series('EFFR')
+wldOIS = wldOIS.to_frame()
+wldOIS.reset_index(level=0, inplace=True)
+wldOIS.columns = ['Date', 'EFFR'] 
+wldOIS['Date'] = pd.to_datetime(wldOIS['Date'], format = '%Y-%m-%d')
+wldOIS.fillna(method='bfill', inplace=True)
+
+wldLOIS = wldBOR.merge(wldOIS, left_on = 'Date', right_on = 'Date', how='left')
+wldLOIS['libor'] = wldLOIS['libor'].astype(float) 
+wldLOIS['EFFR'] = wldLOIS['EFFR'].astype(float) 
+wldLOIS['wldLOIS'] = (wldLOIS['libor'] - wldLOIS['EFFR'])
+wldLOIS.fillna(method='bfill', inplace=True)
+wldLOIS = wldLOIS[['Date', 'wldLOIS']].copy()
+wldLOIS['Date'] = pd.to_datetime(wldLOIS['Date'], format = '%Y-%m-%d')
+#wldLOIS.index = pd.to_datetime(wldLOIS.index)
+
+wldLOIS  = busdays(wldLOIS)
+
+#-----------------------------------------------------------------------------------------
+
+# 3M Goverment Bond Yield
+
+#China 
+
+#Download from here: http://yield.chinabond.com.cn/cbweb-pbc-web/pbc/historyDown?startDate=2019-12-31&endDate=2021-05-23&gjqx=0&qxId=hzsylqx&locale=en_US
+
+#cnBond = 'http://yield.chinabond.com.cn/cbweb-pbc-web/pbc/historyDown?startDate=2019-12-31&endDate=2021-07-12&gjqx=0&qxId=hzsylqx&locale=en_US'
+#cnBond = pd.read_excel('CGBYieldCurveAndOthers2020Year05Month23day—2021Year05Month23day.xlsx')
+cnBond = pd.read_excel('CGBYieldCurveAndOthers2020Year07Month12day—2021Year07Month12day.xlsx')
+cnBond = cnBond[['Date', '3M']].copy()
+cnBond['Date'] = pd.to_datetime(cnBond['Date'], format = '%Y-%m-%d')
+cnBond.columns = ['Date', 'CN_3M']
+cnBond = cnBond.sort_values(by='Date', ascending=True)
+cnBond = cnBond.reset_index(drop=True)
+
+cnTED = pd.merge(cn3M, cnBond, left_on='Date', right_on='Date', how='left')
+cnTED['cnTED'] = cnTED['3M'] - cnTED['CN_3M']
+cnTED = cnTED[['Date', 'cnTED']].copy()
+cnTED.dropna(inplace=True)
+#-----------------------------------------------------------------------------------------
+
+#Italy 
+
+itBond = investpy.get_bond_historical_data(bond='Italy 3M', from_date='01/01/2010', to_date=today)
+itBond.reset_index(level=0, inplace=True)
+itBond = itBond[['Date','Close']].copy()
+itBond['Date'] = pd.to_datetime(itBond['Date'], format = '%Y-%m-%d')
+itBond.columns = ['Date', 'IT_3M']
+
+itTED = pd.merge(eu3M, itBond, left_on='Date', right_on='Date', how='left')
+itTED['itTED'] = itTED['3M'] - itTED['IT_3M']
+itTED = itTED[['Date', 'itTED']].copy()
+itTED.dropna(inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Spain 
+
+spBond = investpy.get_bond_historical_data(bond='Spain 3M', from_date='01/01/2010', to_date=today)
+spBond.reset_index(level=0, inplace=True)
+spBond = spBond[['Date','Close']].copy()
+spBond['Date'] = pd.to_datetime(spBond['Date'], format = '%Y-%m-%d')
+spBond.columns = ['Date', 'SP_3M']
+
+spTED = pd.merge(eu3M, spBond, left_on='Date', right_on='Date', how='left')
+spTED['spTED'] = spTED['3M'] - spTED['SP_3M']
+spTED = spTED[['Date', 'spTED']].copy()
+spTED.dropna(inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#UK 
+
+ukBond = investpy.get_bond_historical_data(bond='U.K. 3M', from_date='01/01/2010', to_date=today)
+ukBond.reset_index(level=0, inplace=True)
+ukBond = ukBond[['Date','Close']].copy()
+ukBond['Date'] = pd.to_datetime(ukBond['Date'], format = '%Y-%m-%d')
+ukBond.columns = ['Date', 'UK_3M']
+
+ukTED = pd.merge(eu3M, ukBond, left_on='Date', right_on='Date', how='left')
+ukTED['ukTED'] = ukTED['3M'] - ukTED['UK_3M']
+ukTED = ukTED[['Date', 'ukTED']].copy()
+ukTED.dropna(inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#US
+
+usBond = investpy.get_bond_historical_data(bond='U.S. 3M', from_date='01/01/2010', to_date=today)
+usBond.reset_index(level=0, inplace=True)
+usBond = usBond[['Date','Close']].copy()
+usBond['Date'] = pd.to_datetime(usBond['Date'], format = '%Y-%m-%d')
+usBond.columns = ['Date', 'US_3M']
+
+usTED = fred.get_series('TEDRATE')
+usTED = usTED.to_frame()
+usTED.reset_index(level=0, inplace=True)
+usTED.columns = ['Date', 'usTED'] 
+usTED['Date'] = pd.to_datetime(usTED['Date'], format = '%Y-%m-%d')
+usTED.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#World
+
+wdBond = investpy.get_bond_historical_data(bond='U.S. 3M', from_date='01/01/2010', to_date=today)
+wdBond.reset_index(level=0, inplace=True)
+wdBond = wdBond[['Date','Close']].copy()
+wdBond['Date'] = pd.to_datetime(wdBond['Date'], format = '%Y-%m-%d')
+wdBond.columns = ['Date', 'WD_3M']
+
+wdTED = fred.get_series('TEDRATE')
+wdTED = wdTED.to_frame()
+wdTED.reset_index(level=0, inplace=True)
+wdTED.columns = ['Date', 'wdTED'] 
+wdTED['Date'] = pd.to_datetime(wdTED['Date'], format = '%Y-%m-%d')
+wdTED.fillna(method='bfill', inplace=True)
+
+#-----------------------------------------------------------------------------------------
+
+#Final DataFrames 
+
+
+cN = [sse, chinaVIX, cnOIS, cnLOIS, cnTED, cnBond, gold, silver, oil]
+
+cN_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), cN)
+cN_merged = cN_merged.sort_values(by='Date', ascending=True)
+cN_merged = cN_merged[~(cN_merged['Date'] < '2019-12-31')]
+cN_merged = cN_merged.dropna()
+
+cN_final = pd.merge(china, cN_merged, left_on='Date', right_on='Date', how='left')
+cN_final.dropna(inplace=True)
+cN_final.reset_index(inplace=True, drop=True)
+
+
+mask = ~(cN_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = cN_final.columns[mask]
+cN_final[cols_to_shift] = cN_final.loc[:,mask].shift(-1)
+cN_final.dropna(inplace=True)
+
+cN_final.to_csv('cN_final.csv', index=False)
+
+#-----------------------------------------------------------------------------------------
+
+#Italy
+
+iT = [mib, euroVIX, euOIS, euLOIS, itTED, itBond, gold, silver, oil]
+
+iT_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), iT)
+iT_merged = iT_merged.sort_values(by='Date', ascending=True)
+iT_merged = iT_merged[~(iT_merged['Date'] < '2019-12-31')]
+iT_merged = iT_merged.dropna()
+
+iT_final = pd.merge(italy, iT_merged, left_on='Date', right_on='Date', how='left')
+iT_final.dropna(inplace=True)
+iT_final.reset_index(inplace=True, drop=True)
+
+mask = ~(iT_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = iT_final.columns[mask]
+iT_final[cols_to_shift] = iT_final.loc[:,mask].shift(-1)
+iT_final.dropna(inplace=True)
+
+iT_final.to_csv('iT_final.csv', index=False)
+
+#-----------------------------------------------------------------------------------------
+
+#Spain
+
+sP = [ibex, euroVIX, euOIS, euLOIS, spTED, spBond, gold, silver, oil]
+
+sP_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), sP)
+sP_merged = sP_merged.sort_values(by='Date', ascending=True)
+sP_merged = sP_merged[~(sP_merged['Date'] < '2019-12-31')]
+sP_merged = sP_merged.dropna()
+
+sP_final = pd.merge(spain, sP_merged, left_on='Date', right_on='Date', how='left')
+sP_final.dropna(inplace=True)
+sP_final.reset_index(inplace=True, drop=True)
+
+mask = ~(sP_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = sP_final.columns[mask]
+sP_final[cols_to_shift] = sP_final.loc[:,mask].shift(-1)
+sP_final.dropna(inplace=True)
+
+sP_final.to_csv('sP_final.csv', index=False)
+
+#-----------------------------------------------------------------------------------------
+
+#UK
+
+uK = [ftse, euroVIX, euOIS, euLOIS, ukTED, ukBond, gold, silver, oil]
+
+uK_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), uK)
+uK_merged = uK_merged.sort_values(by='Date', ascending=True)
+uK_merged = uK_merged[~(uK_merged['Date'] < '2019-12-31')]
+uK_merged = uK_merged.dropna()
+
+uK_final = pd.merge(uk, uK_merged, left_on='Date', right_on='Date', how='left')
+uK_final.dropna(inplace=True)
+uK_final.reset_index(inplace=True, drop=True)
+
+mask = ~(uK_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = uK_final.columns[mask]
+uK_final[cols_to_shift] = uK_final.loc[:,mask].shift(-1)
+uK_final.dropna(inplace=True)
+
+uK_final.to_csv('uK_final.csv', index=False)
+
+#-----------------------------------------------------------------------------------------
+
+#US
+
+uS = [gspc, usaVIX, usOIS, usLOIS, usTED, usBond, gold, silver, oil]
+
+uS_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), uS)
+uS_merged = uS_merged.sort_values(by='Date', ascending=True)
+uS_merged = uS_merged[~(uS_merged['Date'] < '2019-12-31')]
+uS_merged = uS_merged.dropna()
+
+uS_final = pd.merge(us, uS_merged, left_on='Date', right_on='Date', how='left')
+uS_final.dropna(inplace=True)
+uS_final.reset_index(inplace=True, drop=True)
+
+mask = ~(uS_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = uS_final.columns[mask]
+uS_final[cols_to_shift] = uS_final.loc[:,mask].shift(-1)
+uS_final.dropna(inplace=True)
+
+uS_final.to_csv('uS_final.csv', index=False)
+
+#-----------------------------------------------------------------------------------------
+
+#World 
+
+wD = [wld, wldVIX, wldOIS, wldLOIS, wdTED, wdBond, gold, silver, oil]
+
+wD_merged = reduce(lambda left,right: pd.merge(left,right, on=['Date'], how='outer'), wD)
+wD_merged = wD_merged.sort_values(by='Date', ascending=True)
+wD_merged = wD_merged[~(wD_merged['Date'] < '2019-12-31')]
+wD_merged = wD_merged.dropna()
+
+wD_final = pd.merge(world, wD_merged, left_on='Date', right_on='Date', how='left')
+wD_final.dropna(inplace=True)
+wD_final.reset_index(inplace=True, drop=True)
+
+mask = ~(wD_final.columns.isin(['Date','location', 'total_cases', 'total_deaths', 'total_vaccinations', 'new_vaccinations_smoothed']))
+cols_to_shift = wD_final.columns[mask]
+wD_final[cols_to_shift] = wD_final.loc[:,mask].shift(-1)
+wD_final.dropna(inplace=True)
+
+wD_final.to_csv('wD_final.csv', index=False)
+ 
+#-----------------------------------------------------------------------------------------
